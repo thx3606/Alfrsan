@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id               String    @id @default(uuid())
+  fullName         String
+  phoneNumber      String    @unique
+  passwordHash     String
+  bookings         Booking[]
+  createdAt        DateTime  @default(now())
+}
+
+model Car {
+  id                   String    @id @default(uuid())
+  modelName            String
+  dailyPrice           Float
+  imageUrl             String    // Primary/Cover image
+  galleryImages        String?   // JSON string array of up to 10 image paths
+  specs                String?   // JSON string of {topSpeed, hp, year}
+  backgroundVideoUrl   String?
+  availabilityStatus   Boolean   @default(true)
+  quantity             Int       @default(1)
+  createdAt            DateTime  @default(now())
+  bookings             Booking[]
+}
+
+model Booking {
+  id               String    @id @default(uuid())
+  userId           String?
+  user             User?     @relation(fields: [userId], references: [id])
+  carId            String
+  car              Car       @relation(fields: [carId], references: [id])
+  fullName         String
+  nationalId       String
+  dob              DateTime
+  phoneNumber      String
+  startDate        DateTime
+  endDate          DateTime?
+  isOpenEnded      Boolean   @default(false)
+  promoCode        String?
+  totalPrice       Float
+  status           String    @default("PENDING") // PENDING, CONFIRMED, CANCELLED
+  createdAt        DateTime  @default(now())
+}
+
+model Promotion {
+  id             String    @id @default(uuid())
+  code           String    @unique
+  discountType   String    // PERCENTAGE, FIXED
+  discountValue  Float
+  usageCount     Int       @default(0)
+  maxUsages      Int?
+  validUntil     DateTime?
+}
+
+model Admin {
+  id             String    @id @default(uuid())
+  username       String    @unique
+  passwordHash   String
+  role           String    @default("SUPER_ADMIN")
+}
+
+model SiteSettings {
+  id             String    @id @default(uuid())
+  key            String    @unique
+  value          String    // JSON string for generic scalable settings
+}
+
