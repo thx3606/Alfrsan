@@ -1,74 +1,355 @@
+// KHIBRA data model.
+// See ARCHITECTURE.md for module boundaries and DATA_CLASSIFICATION.md for
+// the sensitivity class of every field below. The app connects as the
+// least-privilege `khibra_app` role, never a superuser (see SECURITY.md).
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Identity & Auth
+// ─────────────────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum Locale {
+  AR
+  EN
 }
 
 model User {
-  id               String    @id @default(uuid())
-  fullName         String
-  phoneNumber      String    @unique
-  passwordHash     String
-  bookings         Booking[]
-  createdAt        DateTime  @default(now())
+  id          String     @id @default(uuid())
+  email       String     @unique
+  phoneNumber String?    @unique
+  // Argon2id hash only. Never a plaintext password. Never logged.
+  passwordHash String
+  displayName String
+  bio         String?
+  avatarUrl   String?
+  locale      Locale     @default(AR)
+  status      UserStatus @default(ACTIVE)
+
+  // Level 0-5 platform trust track (see THREAT_MODEL.md).
+  // Server/service-computed only — never accepted from client input.
+  verificationLevel Int @default(0)
+
+  emailVerifiedAt DateTime?
+  phoneVerifiedAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  sessions       Session[]
+  mfaTotp        MfaTotp?
+  recoveryCodes  RecoveryCode[]
+  expertProfile  ExpertProfile?
+  consent        Consent?
+  questions      Question[]
+  answers        Answer[]
+  articles       Article[]
+  ratingsGiven   Rating[]
+  reportsFiled   Report[]        @relation("ReportsFiled")
+  outcomesFiled  Outcome[]
+  auditLogEvents AuditLog[]      @relation("AuditActor")
+
+  @@index([status])
 }
 
-model Car {
-  id                   String    @id @default(uuid())
-  modelName            String
-  dailyPrice           Float
-  imageUrl             String    // Primary/Cover image
-  galleryImages        String?   // JSON string array of up to 10 image paths
-  specs                String?   // JSON string of {topSpeed, hp, year}
-  backgroundVideoUrl   String?
-  availabilityStatus   Boolean   @default(true)
-  quantity             Int       @default(1)
-  createdAt            DateTime  @default(now())
-  bookings             Booking[]
+model Session {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // SHA-256 of the opaque session token. The raw token only ever lives in
+  // the HttpOnly cookie; only its hash is persisted.
+  tokenHash String    @unique
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  @@index([userId])
 }
 
-model Booking {
-  id               String    @id @default(uuid())
-  userId           String?
-  user             User?     @relation(fields: [userId], references: [id])
-  carId            String
-  car              Car       @relation(fields: [carId], references: [id])
-  fullName         String
-  nationalId       String
-  dob              DateTime
-  phoneNumber      String
-  startDate        DateTime
-  endDate          DateTime?
-  isOpenEnded      Boolean   @default(false)
-  promoCode        String?
-  totalPrice       Float
-  status           String    @default("PENDING") // PENDING, CONFIRMED, CANCELLED
-  createdAt        DateTime  @default(now())
+model MfaTotp {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Encrypted at the application layer before storage (AES-GCM with a key
+  // from the secret manager) — never stored as plaintext.
+  secretEncrypted String
+  confirmedAt     DateTime?
+  createdAt       DateTime  @default(now())
 }
 
-model Promotion {
-  id             String    @id @default(uuid())
-  code           String    @unique
-  discountType   String    // PERCENTAGE, FIXED
-  discountValue  Float
-  usageCount     Int       @default(0)
-  maxUsages      Int?
-  validUntil     DateTime?
+model RecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
-model Admin {
-  id             String    @id @default(uuid())
-  username       String    @unique
-  passwordHash   String
-  role           String    @default("SUPER_ADMIN")
+model Consent {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketing       Boolean  @default(false)
+  analytics       Boolean  @default(false)
+  personalization Boolean  @default(false)
+  aiFeatures      Boolean  @default(false)
+  notifications   Boolean  @default(true)
+  updatedAt       DateTime @updatedAt
 }
 
-model SiteSettings {
-  id             String    @id @default(uuid())
-  key            String    @unique
-  value          String    // JSON string for generic scalable settings
+// ─────────────────────────────────────────────────────────────────────────
+// Experts & Verification
+// ─────────────────────────────────────────────────────────────────────────
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
+model ExpertProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline        String
+  yearsExperience Int?
+  // Denormalized, service-computed cache of the Knowledge Reputation Score.
+  // Source of truth is the ReputationEvent ledger; never client-writable.
+  reputationScore Float    @default(0)
+  // Expert-specific verification track (0-5), distinct from User.verificationLevel.
+  verificationLevel Int    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  topics               ExpertProfileTopic[]
+  verificationRequests VerificationRequest[]
+  reputationEvents     ReputationEvent[]
+
+  @@index([reputationScore])
+}
+
+model Topic {
+  id     String @id @default(uuid())
+  slug   String @unique
+  nameAr String
+  nameEn String
+
+  expertProfiles ExpertProfileTopic[]
+  questions      Question[]
+  articles       Article[]
+}
+
+model ExpertProfileTopic {
+  expertProfileId String
+  expertProfile   ExpertProfile @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
+  topicId         String
+  topic           Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([expertProfileId, topicId])
+}
+
+model VerificationRequest {
+  id              String             @id @default(uuid())
+  expertProfileId String
+  expertProfile   ExpertProfile      @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
+  level           Int
+  // Object storage key, not a public URL — served only via an authorized
+  // admin-review endpoint (future). Never sent to AI.
+  evidenceUrl     String?
+  note            String?
+  status          VerificationStatus @default(PENDING)
+  reviewerId      String?
+  decidedAt       DateTime?
+  createdAt       DateTime           @default(now())
+
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Content: Questions, Answers, Articles
+// ─────────────────────────────────────────────────────────────────────────
+
+enum QuestionStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+  REMOVED
+}
+
+model Question {
+  id        String         @id @default(uuid())
+  authorId  String
+  author    User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  topicId   String?
+  topic     Topic?         @relation(fields: [topicId], references: [id])
+  status    QuestionStatus @default(OPEN)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  answers Answer[]
+
+  @@index([topicId])
+  @@index([authorId])
+  @@index([status])
+}
+
+model Answer {
+  id         String   @id @default(uuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  ratings Rating[]
+  outcome Outcome?
+
+  @@index([questionId])
+  @@index([authorId])
+}
+
+model Article {
+  id        String        @id @default(uuid())
+  authorId  String
+  author    User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  topicId   String?
+  topic     Topic?        @relation(fields: [topicId], references: [id])
+  status    ArticleStatus @default(DRAFT)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([topicId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Ratings, Outcomes, Reputation
+// ─────────────────────────────────────────────────────────────────────────
+
+model Rating {
+  id        String   @id @default(uuid())
+  answerId  String
+  answer    Answer   @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  raterId   String
+  rater     User     @relation(fields: [raterId], references: [id], onDelete: Cascade)
+  helpful   Boolean
+  accurate  Boolean
+  clear     Boolean
+  recommend Boolean
+  createdAt DateTime @default(now())
+
+  // One rating per user per answer. Self-rating is additionally blocked at
+  // the service layer (rater must not be the answer's author) — see
+  // src/modules/reputation and THREAT_MODEL.md §4.2.
+  @@unique([answerId, raterId])
+  @@index([answerId])
+}
+
+model Outcome {
+  id           String   @id @default(uuid())
+  answerId     String   @unique
+  answer       Answer   @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  reportedById String
+  reportedBy   User     @relation(fields: [reportedById], references: [id], onDelete: Cascade)
+  resolved     Boolean
+  note         String?
+  createdAt    DateTime @default(now())
+}
+
+enum ReputationEventType {
+  ANSWER_RATED_HELPFUL
+  ANSWER_RATED_UNHELPFUL
+  OUTCOME_RESOLVED
+  VERIFICATION_APPROVED
+  ABUSE_PENALTY
+}
+
+model ReputationEvent {
+  id              String              @id @default(uuid())
+  expertProfileId String
+  expertProfile   ExpertProfile       @relation(fields: [expertProfileId], references: [id], onDelete: Cascade)
+  type            ReputationEventType
+  points          Float
+  sourceType      String
+  sourceId        String
+  createdAt       DateTime            @default(now())
+
+  @@index([expertProfileId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Trust & Safety
+// ─────────────────────────────────────────────────────────────────────────
+
+enum ReportStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+  ESCALATED
+}
+
+model Report {
+  id         String       @id @default(uuid())
+  caseNumber String       @unique @default(uuid())
+  reporterId String
+  reporter   User         @relation("ReportsFiled", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType String
+  targetId   String
+  reason     String
+  status     ReportStatus @default(OPEN)
+  createdAt  DateTime     @default(now())
+  resolvedAt DateTime?
+
+  @@index([status])
+  @@index([targetType, targetId])
+}
+
+// Append-only from the application's perspective: no update/delete service
+// method exists for this model. Never contains secrets/passwords/tokens —
+// only allow-listed fields are ever written here (see src/modules/security/audit.ts).
+model AuditLog {
+  id            String   @id @default(uuid())
+  actorId       String?
+  actor         User?    @relation("AuditActor", fields: [actorId], references: [id])
+  action        String
+  targetType    String?
+  targetId      String?
+  metadata      Json?
+  correlationId String
+  createdAt     DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+}

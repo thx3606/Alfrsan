@@ -1,0 +1,51 @@
+# Local development only. Not a production deployment topology — see
+# SECURITY.md hardening checklist and ARCHITECTURE.md §9 before deploying
+# anywhere internet-facing.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: khibra
+      POSTGRES_USER: khibra_migrator
+      POSTGRES_PASSWORD: khibra_dev_local_only
+    ports:
+      - "5432:5432"
+    volumes:
+      - khibra_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U khibra_migrator -d khibra"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    # NOTE: for local-compose simplicity this uses the schema-owning
+    # migrator role for both `prisma migrate deploy` and app runtime.
+    # Production must use the two-role split documented in .env.example
+    # (khibra_app for runtime DML, khibra_migrator only for the migration
+    # step) — see SECURITY.md §Database.
+    command: sh -c "npx prisma migrate deploy && npm start"
+    environment:
+      DATABASE_URL: "postgresql://khibra_migrator:khibra_dev_local_only@db:5432/khibra?schema=public"
+      REDIS_URL: "redis://redis:6379"
+      SESSION_COOKIE_NAME: "khibra_session"
+      MFA_ENCRYPTION_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+      NODE_ENV: "production"
+    ports:
+      - "3000:3000"
+
+volumes:
+  khibra_db_data:

@@ -1,38 +1,30 @@
 @import "tailwindcss";
 
-@theme inline {
-  --color-background: #000000;
-  --color-foreground: #ffffff;
-  
-  /* Luxury Gold Gradient/Accents */
-  --color-gold-300: #F3E5AB;
-  --color-gold-400: #E6C27A;
-  --color-gold-500: #D4AF37;
-  --color-gold-600: #AA8B2C;
-  --color-gold-700: #806821;
-  
-  /* Deep Blacks */
-  --color-deepblack: #050505;
-  --color-charcoal: #111111;
-  --color-darkgray: #1A1A1A;
+@theme {
+  /* System font stack only — no third-party font CDN request at build or
+     runtime (data minimization + no dependency on external availability). */
+  --font-sans: "Segoe UI", "Tahoma", "Geeza Pro", "Noto Sans Arabic", -apple-system,
+    system-ui, sans-serif;
 
-  --font-sans: var(--font-tajawal), Arial, Helvetica, sans-serif;
+  --color-ink: #0e1116;
+  --color-paper: #fafaf8;
+  --color-paper-dim: #f0efe9;
+  --color-brand: #0f6e5c;
+  --color-brand-dim: #0c5a4b;
+  --color-accent: #c9962c;
+  --color-border: #e2e0d8;
+  --color-muted: #6b7280;
+}
+
+html {
+  color-scheme: light;
 }
 
 body {
-  background: var(--color-background);
-  color: var(--color-foreground);
-  font-family: var(--font-sans);
+  background-color: var(--color-paper);
+  color: var(--color-ink);
 }
 
-/* Custom Utilities for Gold text and borders */
-@utility text-gold-gradient {
-  background: linear-gradient(135deg, var(--color-gold-300) 0%, var(--color-gold-500) 50%, var(--color-gold-700) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-@utility bg-gold-gradient {
-  background: linear-gradient(135deg, var(--color-gold-400) 0%, var(--color-gold-500) 50%, var(--color-gold-600) 100%);
+* {
+  border-color: var(--color-border);
 }

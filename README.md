@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# خِبرة | KHIBRA
 
-## Getting Started
+> المعرفة من أهلها، والقيمة تثبتها النتيجة.
 
-First, run the development server:
+KHIBRA is a Saudi-first knowledge and expertise network: verified experts,
+real questions, real answers, and a reputation system built on quality and
+outcomes rather than followers or engagement. See `ARCHITECTURE.md` for the
+full system design and `ROADMAP.md` for what's implemented versus planned.
+
+**Project status: early build (Phase 1–4 of 17). Not production-ready.**
+See `SECURITY.md` for the hardening checklist that must be completed
+before any production deployment.
+
+## Documentation
+
+| Doc | Purpose |
+|---|---|
+| `ARCHITECTURE.md` | System design, module boundaries, key decisions |
+| `THREAT_MODEL.md` | STRIDE threat model |
+| `SECURITY.md` | Security policy, severity levels, hardening checklist |
+| `DATA_CLASSIFICATION.md` | Field-level data sensitivity classification |
+| `AI_SECURITY.md` | AI Privacy Gateway design and current implementation status |
+| `ROADMAP.md` | Phase-by-phase build status |
+
+## Tech stack
+
+- **Framework**: Next.js (App Router) + TypeScript
+- **Database**: PostgreSQL via Prisma
+- **Auth**: Argon2id password hashing, TOTP MFA, server-side sessions
+- **Validation**: Zod
+- **Styling**: Tailwind CSS, RTL-first (Arabic primary, English secondary)
+- **Tests**: Vitest
+
+## Local development
+
+### Prerequisites
+
+- Node.js 20+
+- PostgreSQL 16 (local or via `docker compose up -d db`)
+
+### Setup
 
 ```bash
+cp .env.example .env       # fill in local values — never commit real secrets
+npm install
+npx prisma migrate dev     # applies schema to your local Postgres
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Tests
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm test
+```
 
-## Learn More
+## Environment variables
 
-To learn more about Next.js, take a look at the following resources:
+See `.env.example` for the full list. Nothing in `.env.example` is a real
+secret — it exists only to document required variables.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Security
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Please read `SECURITY.md` before reporting a vulnerability or deploying
+this project anywhere reachable by real users. Do not deploy this
+repository's current state to production — see the hardening checklist in
+`SECURITY.md`.
